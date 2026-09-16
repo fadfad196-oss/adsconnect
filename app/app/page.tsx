@@ -90,15 +90,20 @@ export default async function OverviewPage({
     bucket.set(String(row.source), (bucket.get(String(row.source)) ?? 0) + Number(row.spend));
     buckets.set(bucketStart, bucket);
   }
-  const sourceOrder = bySource.map((row) => String(row.source));
-  const stackData = [...buckets.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, bucket]) => ({
-      label: formatDate(date),
-      segments: sourceOrder
-        .filter((source) => bucket.has(source))
+  // Sources with no spend would only add empty stack segments and legend rows.
+  const spendingSources = bySource.filter((row) => Number(row.spend) > 0).map((row) => String(row.source));
+  const bucketStarts = [...buckets.keys()].sort();
+  const stackData = bucketStarts.map((date) => {
+    const bucket = buckets.get(date)!;
+    const start = days.indexOf(date);
+    const partial = bucketSize > 1 && start + bucketSize > days.length;
+    return {
+      label: formatDate(date) + (partial ? " (partial)" : ""),
+      segments: spendingSources
+        .filter((source) => (bucket.get(source) ?? 0) > 0)
         .map((source) => ({ key: source, label: source, value: Math.round(bucket.get(source) ?? 0) })),
-    }));
+    };
+  });
 
   const trend = (metric: string) => byDate.map((row) => Number(row[metric]));
 
