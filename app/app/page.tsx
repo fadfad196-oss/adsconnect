@@ -6,19 +6,19 @@ import RankedBars from "@/components/charts/RankedBars";
 import DataTable from "@/components/app/DataTable";
 import DateRangePicker from "@/components/app/DateRangePicker";
 import StatTile from "@/components/app/StatTile";
-import { ButtonLink, Card, CardHeader, ConnectorMark, EmptyState, StatusDot } from "@/components/ui";
+import { Badge, ButtonLink, Card, CardHeader, ConnectorMark, EmptyState, StatusDot } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { CONNECTORS_BY_SLUG } from "@/lib/catalog";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import {
   aggregate,
   eachDate,
-  generateRows,
   previousRange,
   resolveRange,
   sortRows,
   totals,
 } from "@/lib/metrics";
+import { rowsForConnections } from "@/lib/sources";
 import { listConnections } from "@/lib/store";
 
 export default async function OverviewPage({
@@ -42,16 +42,17 @@ export default async function OverviewPage({
     );
   }
 
-  const slugs = connections.map((c) => c.connector);
-  const accounts = Object.fromEntries(
-    connections.map((c) => [c.connector, { id: c.accountId, name: c.accountName }]),
-  );
-
   const { from, to } = resolveRange(range ?? "last_30d");
   const prior = previousRange(from, to);
 
-  const rows = generateRows({ connectors: slugs, accounts, from, to });
-  const priorRows = generateRows({ connectors: slugs, accounts, from: prior.from, to: prior.to });
+  // Live sources come from their platform API; the rest serve sample rows.
+  const [current_, previous_] = await Promise.all([
+    rowsForConnections(connections, from, to),
+    rowsForConnections(connections, prior.from, prior.to),
+  ]);
+  const rows = current_.rows;
+  const priorRows = previous_.rows;
+  const warnings = current_.errors;
 
   const KPIS = ["spend", "revenue", "conversions", "roas", "cpa", "clicks"];
   const current = totals(rows, KPIS);
@@ -112,8 +113,13 @@ export default async function OverviewPage({
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink-900">Overview</h1>
-          <p className="mt-1 text-sm text-ink-500">
-            {connections.length} source{connections.length === 1 ? "" : "s"} · {from} to {to}
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-500">
+            <span>
+              {connections.length} source{connections.length === 1 ? "" : "s"} · {from} to {to}
+            </span>
+            <Badge tone={current_.live ? "good" : "neutral"}>
+              {current_.live ? "Live platform data" : "Sample data"}
+            </Badge>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -123,6 +129,27 @@ export default async function OverviewPage({
           </ButtonLink>
         </div>
       </header>
+
+      {warnings.length ? (
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <h2 className="text-sm font-semibold text-amber-900">
+            {warnings.length} source{warnings.length === 1 ? "" : "s"} could not be read
+          </h2>
+          <ul className="mt-2 space-y-1 text-sm text-amber-800">
+            {warnings.map((warning) => (
+              <li key={warning.connectionId}>
+                <span className="font-medium">{CONNECTORS_BY_SLUG[warning.connector]?.name ?? warning.connector}:</span>{" "}
+                {warning.message}
+                {warning.reauthorize ? (
+                  <Link href={"/app/connectors/" + warning.connector} className="ml-1 font-medium underline">
+                    Reconnect
+                  </Link>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <StatTile metric="spend" value={Number(current.spend)} previous={Number(previous.spend)} trend={trend("spend")} label="Ad spend" />

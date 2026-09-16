@@ -32,6 +32,24 @@ export interface Connection {
   lastSyncAt: string | null;
   createdAt: string;
   error?: string;
+  /** "live" reads the platform API; "sample" serves generated demo rows. */
+  mode: "live" | "sample";
+  /** Encrypted ProviderAuth. Never leaves the server. */
+  credentials?: string;
+  currency?: string;
+}
+
+/**
+ * Tokens land here between the OAuth callback and the user picking accounts,
+ * so a half-finished connect flow never writes a connection.
+ */
+export interface AuthSession {
+  id: string;
+  userId: string;
+  provider: string;
+  connector: string;
+  credentials: string;
+  createdAt: string;
 }
 
 export interface DestinationConfig {
@@ -63,9 +81,17 @@ interface Database {
   connections: Connection[];
   destinations: DestinationConfig[];
   apiKeys: ApiKey[];
+  authSessions: AuthSession[];
 }
 
-const EMPTY: Database = { users: [], sessions: [], connections: [], destinations: [], apiKeys: [] };
+const EMPTY: Database = {
+  users: [],
+  sessions: [],
+  connections: [],
+  destinations: [],
+  apiKeys: [],
+  authSessions: [],
+};
 
 const DATA_DIR = process.env.ADSCONNECT_DATA_DIR || path.join(process.cwd(), ".data");
 const DB_PATH = path.join(DATA_DIR, "db.json");
@@ -177,6 +203,7 @@ export function seedWorkspace(db: Database, userId: string, connectors: string[]
       accountName: "Acme Commerce",
       status: "connected",
       frequency: "daily",
+      mode: "sample",
       lastSyncAt: new Date(now.getTime() - (i + 1) * 37 * 60000).toISOString(),
       createdAt: new Date(now.getTime() - (i + 3) * 86400000).toISOString(),
     });
@@ -317,12 +344,25 @@ export function addConnection(input: {
   accountId: string;
   accountName: string;
   frequency?: Connection["frequency"];
+  mode?: Connection["mode"];
+  credentials?: string;
+  currency?: string;
 }): Connection {
   const db = load();
   const existing = db.connections.find(
     (c) => c.userId === input.userId && c.connector === input.connector && c.accountId === input.accountId,
   );
-  if (existing) return existing;
+  if (existing) {
+    // Reconnecting an account refreshes its credentials instead of duplicating it.
+    if (input.credentials) {
+      existing.credentials = input.credentials;
+      existing.mode = input.mode ?? "live";
+      existing.status = "connected";
+      delete existing.error;
+      persist();
+    }
+    return existing;
+  }
   const connection: Connection = {
     id: id("con"),
     userId: input.userId,
@@ -331,6 +371,9 @@ export function addConnection(input: {
     accountName: input.accountName,
     status: "connected",
     frequency: input.frequency ?? "daily",
+    mode: input.mode ?? (input.credentials ? "live" : "sample"),
+    credentials: input.credentials,
+    currency: input.currency,
     lastSyncAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
   };
@@ -438,5 +481,74 @@ export function bootstrapWorkspace(userId: string, connectors: string[]) {
   const db = load();
   if (db.connections.some((c) => c.userId === userId)) return;
   seedWorkspace(db, userId, connectors);
+  persist();
+}
+
+/* -------------------------------------------------------------- auth sessions */
+
+const AUTH_SESSION_TTL_MS = 30 * 60 * 1000;
+
+export function createAuthSession(input: {
+  userId: string;
+  provider: string;
+  connector: string;
+  credentials: string;
+}): AuthSession {
+  const db = load();
+  const now = Date.now();
+  // Drop anything the user abandoned rather than letting tokens pile up.
+  db.authSessions = db.authSessions.filter(
+    (session) => now - Date.parse(session.createdAt) < AUTH_SESSION_TTL_MS,
+  );
+  const session: AuthSession = {
+    id: id("auth"),
+    userId: input.userId,
+    provider: input.provider,
+    connector: input.connector,
+    credentials: input.credentials,
+    createdAt: new Date().toISOString(),
+  };
+  db.authSessions.push(session);
+  persist();
+  return session;
+}
+
+export function getAuthSession(userId: string, sessionId: string): AuthSession | undefined {
+  const session = load().authSessions.find((s) => s.id === sessionId && s.userId === userId);
+  if (!session) return undefined;
+  if (Date.now() - Date.parse(session.createdAt) > AUTH_SESSION_TTL_MS) return undefined;
+  return session;
+}
+
+export function consumeAuthSession(userId: string, sessionId: string) {
+  const db = load();
+  const index = db.authSessions.findIndex((s) => s.id === sessionId && s.userId === userId);
+  if (index >= 0) {
+    db.authSessions.splice(index, 1);
+    persist();
+  }
+}
+
+/** Persists refreshed tokens without touching anything else on the connection. */
+export function saveConnectionCredentials(connectionId: string, credentials: string) {
+  const db = load();
+  const connection = db.connections.find((c) => c.id === connectionId);
+  if (!connection) return;
+  connection.credentials = credentials;
+  persist();
+}
+
+export function markConnectionError(connectionId: string, message: string | null) {
+  const db = load();
+  const connection = db.connections.find((c) => c.id === connectionId);
+  if (!connection) return;
+  if (message) {
+    connection.status = "error";
+    connection.error = message;
+  } else {
+    connection.status = "connected";
+    delete connection.error;
+    connection.lastSyncAt = new Date().toISOString();
+  }
   persist();
 }

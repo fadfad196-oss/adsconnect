@@ -105,6 +105,10 @@ export default async function AttributionPage({
       <p className="mt-3 text-sm text-ink-500">
         {ATTRIBUTION_MODELS.find((m) => m.id === model)?.blurb}
       </p>
+      <p className="mt-1.5 text-xs text-ink-400">
+        Paths are modelled from your connected channels. Ad platform APIs report aggregates, not visitor level
+        touchpoints, so true multi-touch needs a tracking script on your site.
+      </p>
 
       <div className="mt-6 grid items-start gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">

@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     if (!input.fields.length) {
       input.fields = ["date", "source", "campaign", "impressions", "clicks", "spend", "conversions", "revenue"];
     }
-    const result = runQuery(listConnections(auth.user.id), input);
+    const result = await runQuery(listConnections(auth.user.id), input);
 
     if ((url.searchParams.get("format") ?? "json") === "csv") {
       return new NextResponse(toCsv(result), {

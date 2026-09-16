@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   try {
-    const result = runQuery(listConnections(user.id), parseQueryInput(url.searchParams));
+    const result = await runQuery(listConnections(user.id), parseQueryInput(url.searchParams));
     if (url.searchParams.get("format") === "csv") {
       return new NextResponse(toCsv(result), {
         headers: {

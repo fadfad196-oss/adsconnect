@@ -93,6 +93,7 @@ export const CONNECTORS: Connector[] = [
   c("x-ads", "X Ads", "Paid advertising", "#0f1419", "X (Twitter) campaign, line item and promoted post metrics."),
   c("amazon-ads", "Amazon Ads", "Paid advertising", "#ff9900", "Sponsored Products, Brands and Display with ACOS and TACOS.", { popular: true, extraMetrics: ["acos", "tacos", "units_ordered"], extraDimensions: ["asin", "keyword"] }),
   c("apple-search-ads", "Apple Search Ads", "Paid advertising", "#555555", "App Store search campaign installs and tap-through rate.", { extraMetrics: ["installs", "ttr"] }),
+  c("adform", "Adform", "Paid advertising", "#1a3b8b", "Display, video and DOOH delivery from the Adform DSP.", { popular: true, auth: "api_key", extraDimensions: ["line_item"] }),
   c("criteo", "Criteo", "Paid advertising", "#f60", "Retargeting and retail media campaign reporting."),
   c("taboola", "Taboola", "Paid advertising", "#0480be", "Native discovery campaign spend and conversions."),
   c("outbrain", "Outbrain", "Paid advertising", "#ee6c2e", "Native content amplification metrics."),

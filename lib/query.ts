@@ -2,12 +2,12 @@ import { CONNECTORS_BY_SLUG } from "./catalog";
 import {
   aggregate,
   fieldsFor,
-  generateRows,
   isDimension,
   resolveRange,
   sortRows,
   type Row,
 } from "./metrics";
+import { rowsForConnections } from "./sources";
 import type { Connection } from "./store";
 
 export interface QueryInput {
@@ -28,6 +28,10 @@ export interface QueryResult {
     fields: string[];
     connectors: string[];
     row_count: number;
+    /** True when at least one source answered from a live platform API. */
+    live: boolean;
+    /** Sources that could not be read, rather than silently missing rows. */
+    warnings?: { connector: string; message: string; reauthorize: boolean }[];
   };
   data: Row[];
 }
@@ -109,7 +113,7 @@ function matches(row: Row, filter: Filter): boolean {
  * Shared query path for the public API, the data explorer and scheduled pipeline
  * runs, so all three return identical numbers for identical inputs.
  */
-export function runQuery(connections: Connection[], input: QueryInput): QueryResult {
+export async function runQuery(connections: Connection[], input: QueryInput): Promise<QueryResult> {
   if (!input.fields.length) {
     throw new QueryError("At least one field is required.");
   }
@@ -139,20 +143,16 @@ export function runQuery(connections: Connection[], input: QueryInput): QueryRes
   const { from, to } = resolveRange(input.datePreset, input.dateFrom, input.dateTo);
   if (from > to) throw new QueryError("date_from must be on or before date_to.");
 
-  const accounts = Object.fromEntries(
-    selected.map((c) => [c.connector, { id: c.accountId, name: c.accountName }]),
-  );
-
   const needsAdLevel = input.fields.includes("ad");
   const needsAdGroup = needsAdLevel || input.fields.includes("adgroup");
 
-  let rows = generateRows({
-    connectors: slugs,
-    accounts,
+  const source = await rowsForConnections(
+    selected,
     from,
     to,
-    granularity: needsAdLevel ? "ad" : needsAdGroup ? "adgroup" : "campaign",
-  });
+    needsAdLevel ? "ad" : needsAdGroup ? "adgroup" : "campaign",
+  );
+  let rows = source.rows;
 
   for (const expression of input.filters ?? []) {
     const filter = parseFilter(expression);
@@ -196,6 +196,10 @@ export function runQuery(connections: Connection[], input: QueryInput): QueryRes
       fields: input.fields,
       connectors: slugs,
       row_count: ordered.length,
+      live: source.live,
+      warnings: source.errors.length
+        ? source.errors.map(({ connector, message, reauthorize }) => ({ connector, message, reauthorize }))
+        : undefined,
     },
     data: ordered,
   };

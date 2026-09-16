@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregate, eachDate, generateRows, previousRange, resolveRange, totals } from "../lib/metrics";
+import { aggregate, eachDate, generateRows, previousRange, resolveRange, totals, type Row } from "../lib/metrics";
 import { attribute, generateJourneys, attributionChannels } from "../lib/attribution";
 import { QueryError, runQuery, toCsv } from "../lib/query";
 import type { Connection } from "../lib/store";
@@ -17,6 +17,7 @@ const connections: Connection[] = CONNECTORS.map((connector, i) => ({
   accountName: "Test",
   status: "connected",
   frequency: "daily",
+  mode: "sample",
   lastSyncAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
 }));
@@ -78,13 +79,13 @@ test("first click moves credit away from the closing channels", () => {
   assert.ok(find(first, "facebook-ads") > find(last, "facebook-ads"));
 });
 
-test("query rejects unknown fields and honours field order", () => {
-  assert.throws(
+test("query rejects unknown fields and honours field order", async () => {
+  await assert.rejects(
     () => runQuery(connections, { fields: ["date", "not_a_field"] }),
     (error: unknown) => error instanceof QueryError,
   );
 
-  const result = runQuery(connections, {
+  const result = await runQuery(connections, {
     fields: ["source", "spend", "clicks"],
     dateFrom: FROM,
     dateTo: TO,
@@ -94,9 +95,9 @@ test("query rejects unknown fields and honours field order", () => {
   assert.ok(Number(result.data[0].spend) >= Number(result.data[1].spend));
 });
 
-test("filters narrow the result set", () => {
-  const all = runQuery(connections, { fields: ["source", "spend"], dateFrom: FROM, dateTo: TO });
-  const filtered = runQuery(connections, {
+test("filters narrow the result set", async () => {
+  const all = await runQuery(connections, { fields: ["source", "spend"], dateFrom: FROM, dateTo: TO });
+  const filtered = await runQuery(connections, {
     fields: ["source", "spend"],
     dateFrom: FROM,
     dateTo: TO,
@@ -106,14 +107,14 @@ test("filters narrow the result set", () => {
   assert.equal(filtered.data[0].source, "Google Ads");
 });
 
-test("paused connections are excluded from queries", () => {
+test("paused connections are excluded from queries", async () => {
   const paused = connections.map((c) => (c.connector === "klaviyo" ? { ...c, status: "paused" as const } : c));
-  const result = runQuery(paused, { fields: ["source", "spend"], dateFrom: FROM, dateTo: TO });
-  assert.ok(!result.data.some((row) => row.source === "Klaviyo"));
+  const result = await runQuery(paused, { fields: ["source", "spend"], dateFrom: FROM, dateTo: TO });
+  assert.ok(!result.data.some((row: Row) => row.source === "Klaviyo"));
 });
 
-test("csv export quotes values containing commas", () => {
-  const result = runQuery(connections, { fields: ["campaign", "spend"], dateFrom: FROM, dateTo: TO, limit: 5 });
+test("csv export quotes values containing commas", async () => {
+  const result = await runQuery(connections, { fields: ["campaign", "spend"], dateFrom: FROM, dateTo: TO, limit: 5 });
   const csv = toCsv(result);
   assert.equal(csv.split("\n")[0], "campaign,spend");
   assert.ok(csv.endsWith("\n"));

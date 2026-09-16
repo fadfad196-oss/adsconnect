@@ -1,8 +1,10 @@
+import Link from "next/link";
 import ConnectionList from "@/components/app/ConnectionList";
 import ConnectorBrowser from "@/components/marketing/ConnectorBrowser";
-import { Card, CardHeader, EmptyState } from "@/components/ui";
+import { ButtonLink, Card, CardHeader, ConnectorMark, EmptyState, StatusDot } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
-import { CONNECTORS } from "@/lib/catalog";
+import { CONNECTORS, CONNECTORS_BY_SLUG } from "@/lib/catalog";
+import { PROVIDERS } from "@/lib/providers";
 import { listConnections } from "@/lib/store";
 
 export default async function AppConnectorsPage({
@@ -34,6 +36,46 @@ export default async function AppConnectorsPage({
       ) : null}
 
       <Card className="mt-6">
+        <CardHeader
+          title="Live platform integrations"
+          subtitle="These six read the real reporting API. Everything else in the catalogue connects with sample data on the same schema."
+        />
+        <ul className="divide-y divide-ink-200">
+          {PROVIDERS.map((provider) => {
+            const configured = provider.isConfigured();
+            const missing = provider.requiredEnv.filter((name) => !process.env[name]);
+            const connector = CONNECTORS_BY_SLUG[provider.connectors[0]];
+            return (
+              <li key={provider.slug} className="flex flex-wrap items-center gap-4 px-5 py-3.5">
+                <ConnectorMark name={provider.label} color={connector?.color ?? "#52607a"} size={30} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-ink-900">{provider.label}</p>
+                  <p className="mt-0.5 text-xs text-ink-500">
+                    {configured ? provider.accessNote : "Set " + missing.join(", ") + " to enable."}
+                  </p>
+                </div>
+                <span className="flex items-center gap-1.5 text-xs text-ink-500">
+                  <StatusDot tone={configured ? "good" : "warn"} />
+                  {configured ? "Configured" : "Not configured"}
+                </span>
+                <Link
+                  href={"/app/connectors/" + provider.connectors[0]}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700"
+                >
+                  {configured ? "Connect →" : "Setup →"}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="border-t border-ink-200 px-5 py-3">
+          <Link href="/docs/connectors" className="text-xs font-medium text-brand-600 hover:text-brand-700">
+            Setup guide: credentials, scopes and approval steps →
+          </Link>
+        </div>
+      </Card>
+
+      <Card className="mt-4">
         <CardHeader
           title={"Connected sources (" + connections.length + ")"}
           subtitle="Pause a source to keep the history but stop new syncs."

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { ConnectorMark, StatusDot, buttonClass } from "@/components/ui";
 import { CONNECTORS_BY_SLUG } from "@/lib/catalog";
 import { formatDateTime } from "@/lib/format";
@@ -40,12 +41,30 @@ export default function ConnectionList({ connections }: { connections: Connectio
           <li key={connection.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
             <ConnectorMark name={connector?.name ?? connection.connector} color={connector?.color ?? "#52607a"} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-ink-900">
+              <p className="flex items-center gap-2 truncate text-sm font-medium text-ink-900">
                 {connector?.name ?? connection.connector}
+                <span
+                  className={
+                    "rounded-full px-2 py-0.5 text-[11px] font-medium " +
+                    (connection.mode === "live"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-ink-100 text-ink-500")
+                  }
+                >
+                  {connection.mode === "live" ? "Live" : "Sample"}
+                </span>
               </p>
               <p className="truncate text-xs text-ink-400">
                 {connection.accountName} · {connection.accountId}
               </p>
+              {connection.error ? (
+                <p className="mt-1 text-xs text-[var(--status-bad)]">
+                  {connection.error}{" "}
+                  <Link href={"/app/connectors/" + connection.connector} className="font-medium underline">
+                    Reconnect
+                  </Link>
+                </p>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-1.5 text-xs text-ink-500">
